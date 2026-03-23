@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CIO Vault — P&L Margin Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f3f0;--surf:#fff;--surf2:#edeae6;
+  --bdr:#ddd9d4;--bdrS:#c4beb8;
+  --txt:#1c1a18;--mut:#5c5954;--sub:#8f8b87;
+  --acc:#2a5c45;--accL:#e6f0eb;--accM:#3a7a5c;
+  --red:#9e2b2b;--redL:#fdf1f1;
+  --amb:#7a4f00;--ambL:#fdf5e6;
+  --grn:#1a5e38;--grnL:#e8f5ee;
+  --blu:#1a3a70;--bluL:#edf2fc;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+  --serif:'Playfair Display',Georgia,serif;
+}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.6;min-height:100vh}
+header{background:var(--surf);border-bottom:1px solid var(--bdr);padding:1rem 2.5rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lmark{font-family:var(--serif);font-size:20px;color:var(--acc);font-weight:600}
+.ltag{font-size:11px;color:var(--sub);letter-spacing:.1em;text-transform:uppercase;margin-right:auto}
+.hbtn{background:var(--surf);border:1px solid var(--bdrS);color:var(--mut);font-size:12px;padding:5px 12px;border-radius:7px;cursor:pointer;font-family:var(--sans);font-weight:500;transition:all .15s;display:none}
+.hbtn:hover{border-color:var(--acc);color:var(--acc);background:var(--accL)}
+.hbtn.acc{background:var(--acc);border-color:var(--acc);color:#fff}
+.hbtn.acc:hover{background:var(--accM)}
+main{max-width:1320px;margin:0 auto;padding:2rem 2.5rem}
+.upzone{background:var(--surf);border:2px dashed var(--bdrS);border-radius:14px;padding:2.5rem;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:2rem}
+.upzone:hover,.upzone.drag{border-color:var(--acc);background:var(--accL)}
+.uicon{width:52px;height:52px;margin:0 auto 1rem;background:var(--accL);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px}
+.upzone h2{font-family:var(--serif);font-size:22px;margin-bottom:.4rem;font-weight:500}
+.upzone p{color:var(--mut);font-size:13px;margin-bottom:.2rem}
+.upzone strong{color:var(--acc)}
+#fi{display:none}
+.ord{display:flex;align-items:center;gap:1rem;margin:1.25rem auto;max-width:260px}
+.ord::before,.ord::after{content:'';flex:1;height:1px;background:var(--bdr)}
+.ord span{color:var(--sub);font-size:11px}
+.btn{background:var(--surf);border:1px solid var(--bdrS);color:var(--txt);padding:8px 18px;border-radius:7px;cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:500;transition:all .15s}
+.btn:hover{border-color:var(--acc);color:var(--acc);background:var(--accL)}
+.btnP{background:var(--acc);border-color:var(--acc);color:#fff}
+.btnP:hover{background:var(--accM);border-color:var(--accM);color:#fff}
+#parseStatus{display:none;padding:.75rem 1.1rem;border-radius:8px;font-size:13px;margin-bottom:1.5rem;border:1px solid}
+#parseStatus.ok{background:var(--accL);border-color:#b0cfc0;color:var(--acc)}
+#parseStatus.err{background:var(--redL);border-color:#e8b0b0;color:var(--red)}
+#parseStatus.warn{background:var(--ambL);border-color:#e8d098;color:var(--amb)}
+.sec{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);margin-bottom:.85rem;display:flex;align-items:center;gap:8px;font-weight:500}
+.sec::after{content:'';flex:1;height:1px;background:var(--bdr)}
+/* METRIC CARDS */
+.mrow5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:1.75rem}
+.mc{background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem;position:relative;overflow:hidden}
+.mc.cg{border-color:#aecfbd}.mc.cg::after,.mc.cr::after,.mc.cw::after,.mc.cb::after,.mc.cp::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.mc.cg::after{background:var(--acc)}.mc.cr{border-color:#e8b0b0}.mc.cr::after{background:var(--red)}
+.mc.cw{border-color:#e8d098}.mc.cw::after{background:var(--amb)}.mc.cb{border-color:#a8c0e0}.mc.cb::after{background:var(--blu)}
+.mc.cp{border-color:#d8b0e8}.mc.cp::after{background:#7a2e9a}
+.ml{font-size:10px;color:var(--sub);letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px;font-weight:500}
+.mv{font-family:var(--mono);font-size:20px;font-weight:500;line-height:1.1}
+.mv.vg{color:var(--grn)}.mv.vr{color:var(--red)}.mv.va{color:var(--amb)}.mv.vacc{color:var(--acc)}.mv.vp{color:#7a2e9a}
+.ms{font-size:11px;color:var(--sub);margin-top:3px}
+/* SCORE CARD */
+.score-ring{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:26px;font-weight:600;border:3px solid;flex-shrink:0}
+.score-A{border-color:var(--grn);color:var(--grn);background:var(--grnL)}
+.score-B{border-color:var(--acc);color:var(--acc);background:var(--accL)}
+.score-C{border-color:var(--amb);color:var(--amb);background:var(--ambL)}
+.score-D{border-color:var(--red);color:var(--red);background:var(--redL)}
+/* PANELS */
+.panel{background:var(--surf);border:1px solid var(--bdr);border-radius:12px;padding:1.4rem}
+.ptitle{font-family:var(--serif);font-size:16px;margin-bottom:.15rem;font-weight:500}
+.psub{font-size:12px;color:var(--mut);margin-bottom:1rem}
+.tcol{display:grid;grid-template-columns:330px 1fr;gap:18px;margin-bottom:1.75rem}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:1.75rem}
+.threecol{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:1.75rem}
+/* SLIDERS */
+.sg{margin-bottom:1rem}
+.sh{display:flex;justify-content:space-between;margin-bottom:4px}
+.sl{font-size:12px;color:var(--mut)}
+.sv{font-family:var(--mono);font-size:12px;color:var(--acc);font-weight:500;background:var(--accL);padding:1px 6px;border-radius:4px}
+input[type=range]{width:100%;-webkit-appearance:none;height:4px;background:var(--bdr);border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--acc);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+/* TABLES */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);padding:5px 8px;border-bottom:1px solid var(--bdr);text-align:left;font-weight:500}
+td{padding:6px 8px;border-bottom:1px solid var(--bdr);color:var(--txt)}
+tr:last-child td{border-bottom:none}
+.tm{font-family:var(--mono);font-size:12px}.tr{text-align:right}.tmu{color:var(--mut);font-size:12px}
+.ttot td{border-top:1.5px solid var(--bdrS);font-weight:500;border-bottom:none}
+.tsub td{color:var(--mut);font-size:12px}.tsub td:first-child{padding-left:20px;color:var(--sub)}
+.vg{color:var(--grn)}.vr{color:var(--red)}.va{color:var(--amb)}
+/* EDITABLE CELLS */
+.editable{cursor:pointer;border-bottom:1px dashed var(--bdr);transition:background .15s;border-radius:3px;padding:1px 3px}
+.editable:hover{background:var(--accL);border-bottom-color:var(--acc)}
+.edit-input{font-family:var(--mono);font-size:12px;border:1px solid var(--acc);border-radius:4px;padding:2px 5px;background:var(--surf);color:var(--txt);width:90px;outline:none}
+/* BENCHMARKS */
+.bench-bar{height:8px;border-radius:4px;background:var(--bdr);position:relative;overflow:visible;margin-top:6px}
+.bench-fill{height:100%;border-radius:4px;transition:width .4s}
+.bench-target{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--acc);border-radius:1px}
+.bench-label{display:flex;justify-content:space-between;font-size:10px;color:var(--sub);margin-top:3px}
+/* INSIGHTS */
+.ibox{background:var(--accL);border:1px solid #aecfbd;border-radius:10px;padding:1.2rem 1.4rem;margin-bottom:1.75rem}
+.ititle{font-family:var(--serif);font-size:15px;color:var(--acc);margin-bottom:.6rem;font-weight:600}
+.ilist{display:flex;flex-direction:column;gap:7px}
+.iitem{display:flex;gap:9px;font-size:13px;color:var(--txt);line-height:1.5}
+.idot{width:5px;height:5px;border-radius:50%;background:var(--acc);margin-top:7px;flex-shrink:0}
+/* HISTORY */
+.hist-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:1.75rem;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.2rem}
+.hist-label{font-size:11px;color:var(--sub);font-weight:500;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+.hist-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-height:26px;align-items:center}
+.hchip{background:var(--surf2);border:1px solid var(--bdr);border-radius:20px;padding:4px 10px;font-size:12px;color:var(--mut);cursor:pointer;transition:all .15s;font-weight:500;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.hchip:hover{border-color:var(--acc);color:var(--acc)}.hchip.active{background:var(--acc);border-color:var(--acc);color:#fff}
+.hdel{opacity:.5;font-size:13px;line-height:1}.hdel:hover{opacity:1}
+.hist-actions{display:flex;gap:6px;flex-shrink:0}
+.hist-save{background:var(--acc);border:none;color:#fff;padding:5px 12px;border-radius:7px;cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:500;transition:all .15s}
+.hist-save:hover{background:var(--accM)}
+.hist-none{font-size:12px;color:var(--sub);font-style:italic}
+/* COMPARE */
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:1.75rem}
+.cmp-panel{background:var(--surf);border:1px solid var(--bdr);border-radius:12px;padding:1.4rem}
+.cmp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.cmp-title{font-family:var(--serif);font-size:15px;font-weight:500}
+.cmp-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500}
+.cmp-curr{background:var(--accL);color:var(--acc)}.cmp-prev{background:var(--surf2);color:var(--mut)}
+.delta-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bdr);font-size:13px}
+.delta-row:last-child{border-bottom:none;font-weight:500}
+.delta-lbl{color:var(--mut)}.delta-val{font-family:var(--mono);font-size:12px}
+.delta-pos{color:var(--grn)}.delta-neg{color:var(--red)}.delta-neu{color:var(--sub)}
+/* PORTFOLIO */
+.port-row{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 80px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bdr);font-size:13px}
+.port-row:last-child{border-bottom:none}
+.port-hdr{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--sub);font-weight:500}
+/* AI */
+.ai-box{background:var(--surf);border:1px solid var(--bdr);border-radius:12px;padding:1.4rem;margin-bottom:1.75rem}
+.ai-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem}
+.ai-head-left{display:flex;align-items:center;gap:10px}
+.ai-icon{width:32px;height:32px;background:var(--acc);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.ai-title{font-family:var(--serif);font-size:16px;font-weight:500}
+.ai-sub{font-size:12px;color:var(--mut);margin-top:1px}
+.ai-btn{background:var(--acc);border:none;color:#fff;padding:7px 16px;border-radius:7px;cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:500;transition:all .15s}
+.ai-btn:hover{background:var(--accM)}.ai-btn:disabled{opacity:.5;cursor:not-allowed}
+.ai-out{margin-top:1rem;font-size:13px;line-height:1.75;color:var(--txt);display:none;border-top:1px solid var(--bdr);padding-top:1rem}
+.ai-out.show{display:block}.ai-out p{margin-bottom:.6rem}.ai-out ul{margin:.3rem 0 .6rem 1.1rem}.ai-out li{margin-bottom:.2rem}
+.ai-loading{display:none;align-items:center;gap:8px;margin-top:1rem;font-size:13px;color:var(--mut);border-top:1px solid var(--bdr);padding-top:1rem}
+.ai-loading.show{display:flex}
+.ai-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);animation:blink 1.2s infinite}
+.ai-dot:nth-child(2){animation-delay:.2s}.ai-dot:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+/* TAGS */
+.tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:500;margin-left:4px}
+.tag-cio{background:var(--accL);color:var(--acc)}.tag-top{background:#f0e8fc;color:#5a2e8a}.tag-new{background:var(--bluL);color:var(--blu)}
+/* MANUAL ENTRY */
+.tabs{display:flex;gap:3px;background:var(--surf2);border-radius:8px;padding:3px;margin-bottom:1.4rem}
+.tb{flex:1;padding:6px;border:none;background:transparent;color:var(--mut);font-family:var(--sans);font-size:12px;border-radius:6px;cursor:pointer;transition:all .15s;font-weight:500}
+.tb.on{background:var(--surf);color:var(--txt);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.tp{display:none}.tp.on{display:block}
+.igrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+.ig label{display:block;font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;font-weight:500}
+.ig input,.ig textarea,.ig select{width:100%;background:var(--bg);border:1px solid var(--bdr);border-radius:7px;color:var(--txt);font-family:var(--mono);font-size:13px;padding:7px 10px;outline:none;transition:border-color .15s}
+.ig input:focus,.ig textarea:focus,.ig select:focus{border-color:var(--acc)}
+.ig input[type=text],.ig textarea,.ig select{font-family:var(--sans)}
+.colhdr{font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.07em}
+.srow{display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:7px;align-items:end;margin-bottom:7px}
+.mrow2{display:grid;grid-template-columns:1.4fr 80px 80px auto;gap:7px;align-items:end;margin-bottom:7px}
+.srow input,.mrow2 input{width:100%;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none}
+.srow input[type=text],.mrow2 input[type=text]{font-family:var(--sans)}
+.srow input:focus,.mrow2 input:focus{border-color:var(--acc)}
+.rmbtn{background:var(--redL);border:1px solid #e8b0b0;color:var(--red);border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
+.addbtn{background:var(--accL);border:1px solid #aecfbd;color:var(--acc);border-radius:6px;padding:4px 11px;cursor:pointer;font-size:12px;font-weight:500;margin-top:3px;display:inline-block}
+.morow{display:grid;grid-template-columns:72px repeat(5,1fr);gap:5px;align-items:end;margin-bottom:5px}
+.morow input{width:100%;background:var(--bg);border:1px solid var(--bdr);border-radius:5px;color:var(--txt);font-family:var(--mono);font-size:11px;padding:4px 5px;outline:none;text-align:right}
+.morow input:focus{border-color:var(--acc)}
+.adjrow{display:grid;grid-template-columns:1fr 150px 120px auto;gap:8px;align-items:center;margin-bottom:7px}
+.adjrow input[type=text],.adjrow input[type=number]{width:100%;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-size:13px;padding:6px 9px;outline:none}
+.adjrow input[type=text]{font-family:var(--sans)}.adjrow input[type=number]{font-family:var(--mono)}
+.adjrow input:focus{border-color:var(--acc)}
+.adjrow select{width:100%;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:var(--sans);font-size:13px;padding:6px 9px;outline:none;cursor:pointer}
+/* MONTH CHIPS */
+.mctrl{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem;align-items:center}
+.chip{background:var(--surf2);border:1px solid var(--bdr);border-radius:20px;padding:3px 11px;font-size:11px;color:var(--mut);cursor:pointer;transition:all .15s;font-weight:500;user-select:none}
+.chip.on{color:#fff;border-color:transparent}
+.cw{position:relative}
+/* REVERSE CALC */
+.rev-calc{background:var(--surf2);border-radius:10px;padding:1rem 1.2rem;margin-top:1rem}
+.rev-result{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--acc);margin-top:.5rem}
+.rev-sub{font-size:11px;color:var(--mut);margin-top:2px}
+/* SCENARIO */
+.scen-name{font-size:12px;color:var(--mut);background:var(--surf2);border:1px solid var(--bdr);border-radius:6px;padding:5px 9px;width:100%;font-family:var(--sans);outline:none;transition:border-color .15s}
+.scen-name:focus{border-color:var(--acc)}
+/* IMPORT/EXPORT */
+#importFi{display:none}
+.dm-btn{background:var(--surf);border:1px solid var(--bdrS);color:var(--mut);font-size:12px;padding:5px 13px;border-radius:7px;cursor:pointer;font-family:var(--sans);font-weight:500;transition:all .15s;white-space:nowrap}
+.dm-btn:hover{border-color:var(--acc);color:var(--acc);background:var(--accL)}
+.dm-btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.dm-btn.primary:hover{background:var(--accM)}
+.data-bar{background:var(--surf2);border:1px dashed var(--bdrS);border-radius:10px;padding:.85rem 1.2rem;margin-bottom:1.75rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.data-bar-label{font-size:12px;color:var(--mut);flex:1;line-height:1.4}
+.data-bar-label strong{color:var(--txt);display:block;margin-bottom:2px}
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--acc);color:#fff;padding:.75rem 1.25rem;border-radius:10px;font-size:13px;font-weight:500;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* ONBOARDING */
+#onboard{background:var(--surf);border-radius:16px;border:1px solid var(--bdr);overflow:hidden;margin-bottom:2rem}
+.ob-hero{background:var(--acc);padding:2.5rem 3rem;display:flex;align-items:center;gap:2rem;flex-wrap:wrap}
+.ob-hero-text h1{font-family:var(--serif);font-size:28px;color:#fff;font-weight:600;line-height:1.2;margin-bottom:.5rem}
+.ob-hero-text p{color:rgba(255,255,255,.8);font-size:14px;max-width:520px;line-height:1.6}
+.ob-logo-big{font-family:var(--serif);font-size:48px;color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;letter-spacing:-2px}
+.ob-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--bdr)}
+.ob-step{padding:1.5rem 1.75rem;border-right:1px solid var(--bdr);position:relative}
+.ob-step:last-child{border-right:none}
+.ob-step-num{width:28px;height:28px;border-radius:50%;background:var(--accL);color:var(--acc);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-bottom:.75rem;font-family:var(--mono)}
+.ob-step h3{font-size:14px;font-weight:500;margin-bottom:.4rem;color:var(--txt)}
+.ob-step p{font-size:12px;color:var(--mut);line-height:1.5}
+.ob-step .ob-tag{display:inline-block;background:var(--surf2);border:1px solid var(--bdr);border-radius:12px;font-size:10px;padding:2px 8px;color:var(--sub);margin-top:.5rem;font-weight:500}
+.ob-actions{display:flex;gap:10px;padding:1.5rem 1.75rem;border-top:1px solid var(--bdr);align-items:center;flex-wrap:wrap;background:var(--bg)}
+.ob-actions p{font-size:12px;color:var(--sub);margin-left:auto}
+.ob-badge-row{display:flex;gap:8px;flex-wrap:wrap;padding:.85rem 1.75rem;border-top:1px solid var(--bdr);align-items:center;background:var(--surf2)}
+.ob-badge{background:var(--surf);border:1px solid var(--bdr);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--mut);font-weight:500}
+.ob-badge strong{color:var(--acc)}
+@media(max-width:900px){.ob-steps{grid-template-columns:1fr}.ob-step{border-right:none;border-bottom:1px solid var(--bdr)}.ob-hero{padding:1.5rem}}
+/* PRINT */
+@media print{
+  header .hbtn,.upzone,#manEnt,#parseStatus,.hist-save,.hist-actions,.ai-btn,.addbtn,.rmbtn,.adjrow,.mctrl,.data-bar,.print-hide{display:none!important}
+  body{background:#fff;font-size:12px}
+  main{padding:0;max-width:100%}
+  .panel,.cmp-panel{box-shadow:none;border:1px solid #ccc;break-inside:avoid}
+  .mc{border:1px solid #ccc}
+  #printHeader{display:block!important}
+}
+#printHeader{display:none;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:2px solid var(--acc)}
+hr{border:none;border-top:1px solid var(--bdr);margin:1.25rem 0}
+#content{display:none}#content.on{display:block}
+#manEnt{display:none}
+footer{text-align:center;padding:1.75rem;border-top:1px solid var(--bdr);color:var(--sub);font-size:12px;margin-top:2rem;background:var(--surf)}
+footer strong{color:var(--acc)}
+@media(max-width:900px){.tcol,.twocol,.threecol,.cmp-grid{grid-template-columns:1fr}.mrow5{grid-template-columns:1fr 1fr}main{padding:1.25rem}header{padding:1rem}}
+</style>
+</head>
+<body>
+<input type="file" id="importFi" accept=".json">
+<div class="toast" id="toast"></div>
+<header>
+  <span class="lmark">CIO Vault</span>
+  <span class="ltag">P&amp;L Margin Analyzer</span>
+  <button class="hbtn" id="btnScenario" onclick="saveScenario()">💾 Save scenario</button>
+  <button class="hbtn" id="btnPeriod" onclick="savePeriod()">📅 Save period</button>
+  <button class="hbtn" id="btnExportData" onclick="exportData()">📤 Export data</button>
+  <button class="hbtn" id="btnImportData" onclick="document.getElementById('importFi').click()">📥 Import data</button>
+  <button class="hbtn" id="btnExport" onclick="exportPDF()">⬇ Export PDF</button>
+  <button class="hbtn" id="btnReset" onclick="resetApp()">↩ Load another</button>
+</header>
+<main>
+
+<!-- PRINT HEADER -->
+<div id="printHeader">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div><div style="font-family:var(--serif);font-size:22px;color:var(--acc);font-weight:600">CIO Vault</div><div style="font-size:12px;color:var(--sub)">P&amp;L Margin Analyzer Report</div></div>
+    <div style="text-align:right;font-size:12px;color:var(--mut)" id="printMeta"></div>
+  </div>
+</div>
+
+<!-- UPLOAD (hidden file input only — onboarding handles the visible UI) -->
+<input type="file" id="fi" accept=".xlsx,.xls" style="display:none">
+<div id="parseStatus"></div>
+
+<!-- ONBOARDING SCREEN -->
+<div id="onboard">
+  <div class="ob-hero">
+    <div class="ob-logo-big">CV</div>
+    <div class="ob-hero-text">
+      <h1>Know your contract health in 60 seconds</h1>
+      <p>Drop in your P&amp;L spreadsheet and instantly see your gross margin score, MSP cost benchmark, CIO salary allocation gap, and exactly what needs to change to hit your target margin. Built for IT leaders managing higher-ed MSP accounts.</p>
+    </div>
+  </div>
+  <div class="ob-steps">
+    <div class="ob-step">
+      <div class="ob-step-num">1</div>
+      <h3>Upload your P&amp;L</h3>
+      <p>Drop in your Excel file. The tool reads your Summary, Salaries, and MSP tabs automatically — no reformatting needed.</p>
+      <span class="ob-tag">.xlsx or .xls</span>
+    </div>
+    <div class="ob-step">
+      <div class="ob-step-num">2</div>
+      <h3>Get your health score</h3>
+      <p>Instantly see your contract grade (A–D), gross margin vs. benchmark, MSP efficiency, and where your P&amp;L is at risk.</p>
+      <span class="ob-tag">A–D score · 4 benchmarks</span>
+    </div>
+    <div class="ob-step">
+      <div class="ob-step-num">3</div>
+      <h3>Model your scenarios</h3>
+      <p>Use sliders or click to edit any number. The reverse calculator tells you exactly what needs to change to hit your target margin.</p>
+      <span class="ob-tag">AI analysis included</span>
+    </div>
+  </div>
+  <div class="ob-badge-row">
+    <span style="font-size:11px;color:var(--sub);font-weight:500;margin-right:4px">What's included:</span>
+    <span class="ob-badge"><strong>Health score</strong> A–D grade</span>
+    <span class="ob-badge"><strong>Benchmarks</strong> vs. higher-ed MSP</span>
+    <span class="ob-badge"><strong>Period comparison</strong> over time</span>
+    <span class="ob-badge"><strong>AI analysis</strong> plain-language insights</span>
+    <span class="ob-badge"><strong>Reverse calculator</strong> work backwards from target</span>
+    <span class="ob-badge"><strong>Export</strong> PDF + data backup</span>
+  </div>
+  <div class="ob-actions">
+    <button class="btn btnP" onclick="document.getElementById('fi').click()">Upload my P&amp;L →</button>
+    <button class="btn" onclick="loadDemo()">Try with sample data</button>
+    <button class="btn" onclick="document.getElementById('onboard').style.display='none';document.getElementById('manEnt').style.display='block'">Enter data manually</button>
+    <p>Your data never leaves your device</p>
+  </div>
+</div>
+
+
+
+<!-- MANUAL ENTRY -->
+<div id="manEnt">
+  <div class="sec">Enter your P&amp;L data</div>
+  <div class="panel" style="margin-bottom:1.75rem">
+    <div class="tabs">
+      <button class="tb on" onclick="stab('basic',this)">Basic info</button>
+      <button class="tb" onclick="stab('staff',this)">Staff salaries</button>
+      <button class="tb" onclick="stab('msp',this)">MSP resources</button>
+      <button class="tb" onclick="stab('monthly',this)">Monthly data</button>
+      <button class="tb" onclick="stab('other',this)">Other costs</button>
+    </div>
+    <div id="tp-basic" class="tp on">
+      <div class="igrid">
+        <div class="ig"><label>Institution name</label><input type="text" id="i-name" value="My Institution"></div>
+        <div class="ig"><label>Fiscal year</label><input type="text" id="i-fy" value="FY2026"></div>
+        <div class="ig"><label>Annual revenue ($)</label><input type="number" id="i-rev" value="500000"></div>
+        <div class="ig"><label>Annual OPEX ($)</label><input type="number" id="i-opex" value="75000"></div>
+      </div>
+    </div>
+    <div id="tp-staff" class="tp">
+      <p style="font-size:12px;color:var(--mut);margin-bottom:.9rem">Add each staff member. Mark "CIO" for the role eligible for cross-account reallocation.</p>
+      <div class="srow" style="margin-bottom:4px"><span class="colhdr">Name</span><span class="colhdr">Base ($)</span><span class="colhdr">Total w/ benefits ($)</span><span class="colhdr" style="text-align:center">CIO?</span></div>
+      <div id="staffR"></div><span class="addbtn" onclick="addSrow()">+ Add person</span>
+    </div>
+    <div id="tp-msp" class="tp">
+      <p style="font-size:12px;color:var(--mut);margin-bottom:.9rem">Add each MSP resource. Annual = avg hrs/mo × rate × 12.</p>
+      <div class="mrow2" style="margin-bottom:4px"><span class="colhdr">Resource name</span><span class="colhdr">Avg hrs/mo</span><span class="colhdr">Rate ($/hr)</span><span></span></div>
+      <div id="mspR"></div><span class="addbtn" onclick="addMrow()">+ Add resource</span>
+    </div>
+    <div id="tp-monthly" class="tp">
+      <p style="font-size:12px;color:var(--mut);margin-bottom:.9rem">Enter actual monthly figures. Leave blank to use annual ÷ 12.</p>
+      <div class="morow" style="margin-bottom:3px"><span></span><span class="colhdr" style="text-align:center">Revenue</span><span class="colhdr" style="text-align:center">Salaries</span><span class="colhdr" style="text-align:center">MSP</span><span class="colhdr" style="text-align:center">Software</span><span class="colhdr" style="text-align:center">Other COGS</span></div>
+      <div id="moR"></div>
+    </div>
+    <div id="tp-other" class="tp">
+      <div class="igrid">
+        <div class="ig"><label>Software &amp; tools (annual $)</label><input type="number" id="i-sw" value="0"></div>
+        <div class="ig"><label>Hosting (annual $)</label><input type="number" id="i-ho" value="0"></div>
+        <div class="ig"><label>Reseller (annual $)</label><input type="number" id="i-re" value="0"></div>
+        <div class="ig"><label>Subcontractors (annual $)</label><input type="number" id="i-su" value="0"></div>
+        <div class="ig"><label>Travel (annual $)</label><input type="number" id="i-tr" value="0"></div>
+      </div>
+    </div>
+    <hr><button class="btn btnP" onclick="loadMan()">Analyze my P&amp;L →</button>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="content">
+
+  <!-- SCORE + SNAPSHOT -->
+  <div id="printHeader2" style="display:none" class="print-show"></div>
+  <div class="sec" id="acctSec">Snapshot</div>
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:18px;margin-bottom:1.75rem;align-items:start">
+    <div class="panel" style="text-align:center;min-width:160px">
+      <div class="ptitle" style="margin-bottom:.75rem">Health score</div>
+      <div id="scoreRing" style="display:flex;justify-content:center;margin-bottom:.75rem"></div>
+      <div id="scoreGrade" style="font-size:13px;color:var(--mut);line-height:1.4"></div>
+    </div>
+    <div>
+      <div class="mrow5" id="snap"></div>
+      <!-- BENCHMARKS -->
+      <div class="panel" style="margin-bottom:0">
+        <div class="ptitle" style="margin-bottom:.75rem">Benchmarks — higher ed MSP</div>
+        <div id="benchmarks"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATA PERSISTENCE BAR -->
+  <div class="data-bar" id="dataBar" style="display:none">
+    <div class="data-bar-label">
+      <strong>Your saved data lives in this browser only</strong>
+      Export your periods and scenarios as a file so you can reload them on any device, share with a colleague, or keep as a backup.
+    </div>
+    <button class="dm-btn primary" onclick="exportData()">📤 Export my data</button>
+    <button class="dm-btn" onclick="document.getElementById('importFi').click()">📥 Load saved data</button>
+  </div>
+
+  <!-- HISTORY + PERIOD COMPARE -->
+  <div class="hist-bar" id="histBar">
+    <span class="hist-label">Saved periods</span>
+    <div class="hist-chips" id="histChips"><span class="hist-none">No saved periods yet</span></div>
+    <div class="hist-actions">
+      <button class="hist-save" onclick="savePeriod()">Save period</button>
+    </div>
+  </div>
+  <div id="cmpSection" style="display:none">
+    <div class="sec">Period comparison</div>
+    <div class="cmp-grid" id="cmpGrid"></div>
+    <div class="panel" style="margin-bottom:1.75rem">
+      <div class="ptitle">What changed</div>
+      <div class="psub" id="cmpLabel"></div>
+      <table id="cmpTable"></table>
+    </div>
+  </div>
+
+  <!-- PORTFOLIO DASHBOARD -->
+  <div id="portfolioSection" style="display:none">
+    <div class="sec">Portfolio overview</div>
+    <div class="panel" style="margin-bottom:1.75rem">
+      <div class="ptitle">All saved accounts</div>
+      <div class="psub">All periods you have saved — compare across institutions at a glance</div>
+      <div id="portfolioGrid"></div>
+    </div>
+  </div>
+
+  <!-- AI ANALYSIS -->
+  <div class="ai-box">
+    <div class="ai-head">
+      <div class="ai-head-left">
+        <div class="ai-icon">✦</div>
+        <div><div class="ai-title">AI margin analysis</div><div class="ai-sub" id="aiSubLabel">Plain-language analysis of your P&amp;L with prioritized action items</div></div>
+      </div>
+      <button class="ai-btn" id="aiBtn" onclick="runAI()">Analyze with AI</button>
+    </div>
+    <div class="ai-loading" id="aiLoading"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div><span>Analyzing your P&amp;L...</span></div>
+    <div class="ai-out" id="aiOut"></div>
+  </div>
+
+  <!-- INSIGHTS -->
+  <div class="sec">Margin insights</div>
+  <div class="ibox" id="ibox"></div>
+
+  <!-- LEVERS + PL TABLE -->
+  <div class="sec">Scenario modeling</div>
+  <div class="tcol">
+    <div class="panel">
+      <div class="ptitle">Scenario levers</div>
+      <div class="ig" style="margin-bottom:1rem"><label>Scenario name</label><input type="text" class="scen-name" id="scenName" placeholder="e.g. MSP cut + reprice option A" value=""></div>
+      <div class="sg"><div class="sh"><label class="sl">CIO salary reallocation off this account</label><span class="sv" id="v1">0%</span></div><input type="range" id="s1" min="0" max="70" step="5" value="0"></div>
+      <div class="sg"><div class="sh"><label class="sl">MSP cost reduction</label><span class="sv" id="v2">0%</span></div><input type="range" id="s2" min="0" max="50" step="5" value="0"></div>
+      <div class="sg"><div class="sh"><label class="sl">Revenue increase (repricing / growth)</label><span class="sv" id="v3">0%</span></div><input type="range" id="s3" min="0" max="30" step="1" value="0"></div>
+      <div class="sg"><div class="sh"><label class="sl">Software &amp; tools savings</label><span class="sv" id="v5">0%</span></div><input type="range" id="s5" min="0" max="50" step="5" value="0"></div>
+      <hr>
+      <!-- REVERSE CALCULATOR -->
+      <div style="margin-bottom:1rem">
+        <div style="font-size:12px;font-weight:500;color:var(--mut);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.07em">Target margin calculator</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:.5rem">
+          <label style="font-size:12px;color:var(--mut);white-space:nowrap">I want</label>
+          <input type="number" id="targetGM" value="32" min="1" max="70" style="width:60px;border:1px solid var(--bdr);border-radius:6px;padding:4px 7px;font-family:var(--mono);font-size:13px;background:var(--bg);color:var(--txt);outline:none" oninput="calcReverse()">
+          <label style="font-size:12px;color:var(--mut)">% gross margin via</label>
+          <select id="revLever" onchange="calcReverse()" style="border:1px solid var(--bdr);border-radius:6px;padding:4px 7px;font-family:var(--sans);font-size:12px;background:var(--bg);color:var(--txt);outline:none;cursor:pointer">
+            <option value="revenue">Revenue increase</option>
+            <option value="msp">MSP reduction</option>
+            <option value="cio">CIO reallocation</option>
+          </select>
+        </div>
+        <div class="rev-calc">
+          <div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.07em">Required change</div>
+          <div class="rev-result" id="revResult">—</div>
+          <div class="rev-sub" id="revSub"></div>
+        </div>
+      </div>
+      <hr>
+      <div class="cw" style="height:185px"><canvas id="lChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.15rem">
+        <div class="ptitle">P&amp;L — before vs after</div>
+        <span style="font-size:11px;color:var(--sub)">Click any adjusted value to edit directly</span>
+      </div>
+      <div class="psub" id="scenLabel">Drag levers or click values to edit. All changes update live.</div>
+      <table id="plT"></table>
+    </div>
+  </div>
+
+  <!-- COST BREAKDOWNS -->
+  <div class="sec">Cost breakdown</div>
+  <div class="twocol">
+    <div class="panel"><div class="ptitle">Staff salary detail</div><div class="psub">Each person's share of COGS</div><table id="salT"></table></div>
+    <div class="panel"><div class="ptitle">MSP resource detail</div><div class="psub">Annual cost per contractor, sorted by spend</div><table id="mspT"></table></div>
+  </div>
+
+  <!-- ADDITIONAL ADJUSTMENTS -->
+  <div class="sec">Contract adjustments</div>
+  <div class="panel" style="margin-bottom:1.75rem">
+    <div class="ptitle">Additional line items</div>
+    <div class="psub">Model new tools, services, or pricing changes — see P&amp;L impact instantly</div>
+    <div style="display:grid;grid-template-columns:1fr 150px 120px auto;gap:8px;margin-bottom:6px">
+      <span class="colhdr">Description</span><span class="colhdr">Annual amount ($)</span><span class="colhdr">Type</span><span></span>
+    </div>
+    <div id="adjRows"></div>
+    <span class="addbtn" onclick="addAdj()" style="margin-top:6px;cursor:pointer">+ Add line item</span>
+    <div id="adjSummary" style="display:none;margin-top:1.25rem">
+      <hr style="margin-bottom:1rem">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="adjCards"></div>
+    </div>
+  </div>
+
+  <!-- MONTHLY COMPARISON -->
+  <div class="sec">Monthly comparison</div>
+  <div class="panel" style="margin-bottom:2rem">
+    <div class="ptitle">Month-by-month view</div>
+    <div class="mctrl" id="mctrl"></div>
+    <div class="cw" style="height:270px;margin-bottom:1.5rem"><canvas id="moChart"></canvas></div>
+    <div style="overflow-x:auto"><table id="moT"></table></div>
+  </div>
+
+  <!-- NOTES -->
+  <div class="sec">Notes &amp; annotations</div>
+  <div class="panel" style="margin-bottom:2rem">
+    <div class="ptitle">Period notes</div>
+    <div class="psub">Record context for this P&amp;L — saved with each period snapshot</div>
+    <textarea id="periodNotes" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:10px;font-family:var(--sans);font-size:13px;color:var(--txt);outline:none;resize:vertical;line-height:1.6" placeholder="e.g. Q1 FY26 — onboarded new help desk system in Jan. MSP hours elevated due to migration. Expecting normalization by March." oninput="S.notes=this.value"></textarea>
+  </div>
+
+</div><!-- /content -->
+</main>
+<footer>Built for IT leaders by <strong>CIO Vault</strong> — Templates, tools, and frameworks for modern CIOs</footer>
+<script>
+// ── STATE ──────────────────────────────────────────────────────
+const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let lChart,moChart,activePeriod=null;
+let activeMo=['revenue','grossMargin','cogs'];
+let editOverrides={};  // key -> adjusted value set by direct edit
+
+let S={
+  name:'My Institution',fy:'FY2026',
+  revenue:0,opex:0,software:0,hosting:0,reseller:0,subs:0,travel:0,
+  staff:[],msp:[],adj:[],notes:'',
+  mo:Array(12).fill(null).map(()=>({rev:null,sal:null,msp:null,sw:null,other:null}))
+};
+
+// ── PARSER ──────────────────────────────────────────────────────
+function parseWorkbook(wb,fileName){
+  const msgs=[];
+  const isN=v=>typeof v==='number'&&isFinite(v);
+  const asN=v=>isN(v)?v:(typeof v==='string'?parseFloat(v.replace(/[$,]/g,''))||0:0);
+  const cl=v=>(v==null?'':String(v)).trim();
+  const lc=v=>cl(v).toLowerCase();
+  const allS={};
+  wb.SheetNames.forEach(n=>{allS[n.toLowerCase().trim()]=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null,raw:true});});
+  const findS=(...kws)=>{const k=Object.keys(allS).find(k=>kws.some(w=>k.includes(w)));return k?{name:k,data:allS[k]}:null;};
+
+  // SUMMARY
+  const sr=findS('summary','p&l','pl ','annual','budget','report')||{name:wb.SheetNames[0].toLowerCase(),data:allS[wb.SheetNames[0].toLowerCase()]};
+  const kwMap={
+    revenue:['revenue'],salaries:['salaries & wages','salaries','wages','salary & wages','personnel costs','personnel','staffing'],
+    msp:['msp cost','msp salary cost','msp salary','managed services','managed service','msp'],
+    software:['software and tools','software & tools','software licenses','software'],
+    hosting:['hosting','infrastructure/hosting','infrastructure'],
+    reseller:['reseller'],subs:['subcontractor','subcontractors'],travel:['travel','travel & misc'],
+    opex:['total opex','overhead/opex','overhead','opex','indirect'],
+  };
+  sr.data.forEach(row=>{
+    let label='';
+    for(let ci=0;ci<Math.min(4,row.length);ci++){const v=row[ci];if(v!=null&&typeof v==='string'&&v.trim()){label=v.trim().toLowerCase();break;}}
+    if(!label)return;
+    const nums=row.filter(v=>isN(v)&&v>0);
+    if(!nums.length)return;
+    const fyTotal=nums[nums.length-1];
+    const moNums=nums.slice(0,nums.length-1);
+    for(const[key,kws]of Object.entries(kwMap)){
+      if(kws.some(kw=>label.includes(kw))){
+        if(key==='revenue'){S.revenue=fyTotal;moNums.slice(0,12).forEach((v,i)=>S.mo[i].rev=v);}
+        else if(key==='salaries'){S._salTotal=fyTotal;moNums.slice(0,12).forEach((v,i)=>S.mo[i].sal=v);}
+        else if(key==='msp'){S._mspTotal=fyTotal;moNums.slice(0,12).forEach((v,i)=>S.mo[i].msp=v);}
+        else if(key==='software'){S.software=fyTotal;moNums.slice(0,12).forEach((v,i)=>S.mo[i].sw=v);}
+        else if(key==='hosting'){S.hosting=fyTotal;}
+        else if(key==='reseller'){S.reseller=fyTotal;}
+        else if(key==='subs'){S.subs=fyTotal;}
+        else if(key==='travel'){S.travel=fyTotal;}
+        else if(key==='opex'){S.opex=fyTotal;}
+        break;
+      }
+    }
+  });
+  msgs.push({t:'ok',m:`Summary: revenue ${fmt(S.revenue)}, OPEX ${fmt(S.opex)} (sheet: "${sr.name}")`});
+
+  // SALARIES
+  const salR=findS('salar','payroll','staff','personnel','employee','hr');
+  const parseStaff=data=>{
+    if(!data)return false;
+    for(let ri=0;ri<data.length;ri++){
+      const row=data[ri];
+      const nci=row.findIndex(c=>{const s=lc(c);return s==='name'||(s.includes('name')&&s.length<=15)||s==='employee name'||s==='employee';});
+      if(nci<0)continue;
+      let cb=-1,ct=-1;
+      row.forEach((c,ci)=>{const s=lc(c);if(['base','base salary','annual salary','salary'].includes(s)&&cb<0)cb=ci;if(['total','total annual','annual','total comp','total compensation'].includes(s)&&ct<0)ct=ci;});
+      S.staff=[];
+      for(let ri2=ri+1;ri2<data.length;ri2++){
+        const r=data[ri2];const nm=cl(r[nci]);
+        if(!nm||['total','nan',''].includes(nm.toLowerCase()))continue;
+        const base=cb>=0?asN(r[cb]):0;const total=ct>=0?asN(r[ct]):0;
+        if(base===0&&total===0)continue;
+        S.staff.push({name:nm,base:Math.round(base),total:Math.round(total||base)});
+      }
+      if(S.staff.length>0)return true;
+    }
+    return false;
+  };
+  if(!parseStaff(salR?.data))parseStaff(sr.data);
+  if(S.staff.length>0)msgs.push({t:'ok',m:`Staff: ${S.staff.map(s=>s.name).join(', ')}`});
+  else msgs.push({t:'warn',m:'No staff detail found — add in the Staff tab, or ensure your file has a Salaries/Payroll/Staff sheet.'});
+
+  // MSP
+  const mspR=findS('msp','contractor','vendor','managed');
+  const resMap={};
+  const parseMsp=data=>{
+    if(!data)return false;let found=false;
+    // Strategy A: side-by-side monthly blocks
+    data.forEach((row,hri)=>{
+      const ncs=[];row.forEach((c,ci)=>{if(lc(c)==='name')ncs.push(ci);});
+      if(!ncs.length)return;
+      ncs.forEach(nc=>{
+        for(let ri=hri+1;ri<data.length;ri++){
+          const dr=data[ri];const nm=cl(dr[nc]);
+          if(!nm||['total','grand total','nan',''].includes(nm.toLowerCase()))continue;
+          if(lc(dr[nc])==='name')break;
+          const hrs=isN(dr[nc+1])?dr[nc+1]:0;const rate=isN(dr[nc+2])?dr[nc+2]:0;const tot=isN(dr[nc+3])?dr[nc+3]:hrs*rate;
+          if(tot===0&&hrs===0)continue;
+          if(!resMap[nm])resMap[nm]={cost:0,hrs:0,rate:0,months:0};
+          resMap[nm].cost+=tot;resMap[nm].hrs+=hrs;resMap[nm].rate=rate||resMap[nm].rate;resMap[nm].months+=1;found=true;
+        }
+      });
+    });
+    if(found)return true;
+    // Strategy B: vertical list
+    for(let ri=0;ri<data.length;ri++){
+      const row=data[ri];
+      const nci=row.findIndex(c=>{const s=lc(c);return['contractor','vendor','resource','company','name','provider'].includes(s)||(s.includes('name')&&s.length<20);});
+      if(nci<0)continue;
+      let chrs=-1,crate=-1,cann=-1,cmo=-1;
+      row.forEach((c,ci)=>{const s=lc(c);if((s.includes('hour')||s.includes('hrs'))&&chrs<0)chrs=ci;if(s.includes('rate')&&crate<0)crate=ci;if((s.includes('annual')||s.includes('yearly'))&&cann<0)cann=ci;if(s.includes('month')&&s.includes('cost')&&cmo<0)cmo=ci;});
+      for(let ri2=ri+1;ri2<data.length;ri2++){
+        const r=data[ri2];const nm=cl(r[nci]);
+        if(!nm||['total','nan',''].includes(nm.toLowerCase()))continue;
+        const hrs=chrs>=0?asN(r[chrs]):0;const rate=crate>=0?asN(r[crate]):0;
+        const ann=cann>=0?asN(r[cann]):0;const mo=cmo>=0?asN(r[cmo]):0;
+        const est=ann||(mo*12)||(hrs*rate*12);
+        if(est===0&&hrs===0)continue;
+        resMap[nm]={cost:est,hrs,rate,months:12};found=true;
+      }
+      if(found)break;
+    }
+    return found;
+  };
+  parseMsp(mspR?.data);
+  if(Object.keys(resMap).length>0){
+    S.msp=Object.entries(resMap).map(([name,d])=>({name,hrs:Math.round(d.hrs/Math.max(d.months===12?12:d.months,1)*10)/10,rate:Math.round(d.rate*100)/100,annEst:Math.round(d.months===12?d.cost:d.cost*(12/Math.max(d.months,1)))})).sort((a,b)=>b.annEst-a.annEst);
+    msgs.push({t:'ok',m:`MSP: ${S.msp.length} resource${S.msp.length!==1?'s':''}. Top: ${S.msp[0]?.name} (~${fmt(S.msp[0]?.annEst)}/yr)`});
+  }else msgs.push({t:'warn',m:'No MSP detail found — add in the MSP tab, or ensure your file has an MSP/Contractors/Vendors sheet.'});
+
+  S.name=fileName.replace(/\.(xlsx|xls)$/i,'').replace(/[_\-]+/g,' ');
+  return msgs;
+}
+
+// ── UPLOAD WIRING ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  buildStaff();buildMsp();buildMoRows();
+  const fi=document.getElementById('fi');
+  // Drag and drop on the whole onboarding block
+  const ob=document.getElementById('onboard');
+  ob.addEventListener('dragover',e=>{e.preventDefault();ob.style.borderColor='var(--acc)';});
+  ob.addEventListener('dragleave',()=>ob.style.borderColor='');
+  ob.addEventListener('drop',e=>{e.preventDefault();ob.style.borderColor='';if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);});
+  fi.addEventListener('change',e=>{if(e.target.files[0])readFile(e.target.files[0]);});
+  // manual entry triggered from onboarding buttons
+  calcReverse();
+});
+
+function readFile(file){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array',cellDates:false});
+      const msgs=parseWorkbook(wb,file.name);
+      showStatus(msgs);
+      go();
+    }catch(err){showStatus([{t:'err',m:'Could not read file: '+err.message+'. Try manual entry.'}]);console.error(err);}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showStatus(msgs){
+  const el=document.getElementById('parseStatus');
+  const hasErr=msgs.some(m=>m.t==='err'),hasWarn=msgs.some(m=>m.t==='warn');
+  el.className=hasErr?'err':hasWarn?'warn':'ok';el.style.display='block';
+  el.innerHTML='<strong>'+(hasErr?'Import issues':hasWarn?'Partial import':'Import successful')+'</strong><br>'+
+    msgs.map(m=>`<span style="display:block;margin-top:3px">${m.t==='ok'?'✓':m.t==='warn'?'⚠':'✗'} ${m.m}</span>`).join('');
+}
+
+// ── MANUAL ENTRY BUILDERS ────────────────────────────────────────
+function buildStaff(){
+  document.getElementById('staffR').innerHTML='';
+  S.staff.forEach((s,i)=>{
+    const d=document.createElement('div');d.className='srow';
+    d.innerHTML=`<input type="text" placeholder="Full name" value="${esc(s.name)}" onchange="S.staff[${i}].name=this.value">
+      <input type="number" placeholder="0" value="${s.base||''}" onchange="S.staff[${i}].base=+this.value">
+      <input type="number" placeholder="0" value="${s.total||''}" onchange="S.staff[${i}].total=+this.value">
+      <button class="rmbtn" onclick="rmS(${i})">×</button>`;
+    document.getElementById('staffR').appendChild(d);
+  });
+}
+function addSrow(){S.staff.push({name:'',base:0,total:0});buildStaff();}
+function rmS(i){S.staff.splice(i,1);buildStaff();}
+
+function buildMsp(){
+  document.getElementById('mspR').innerHTML='';
+  S.msp.forEach((m,i)=>{
+    const d=document.createElement('div');d.className='mrow2';
+    d.innerHTML=`<input type="text" placeholder="Resource name" value="${esc(m.name)}" onchange="S.msp[${i}].name=this.value">
+      <input type="number" placeholder="0" value="${m.hrs||''}" onchange="S.msp[${i}].hrs=+this.value">
+      <input type="number" placeholder="0.00" step="0.01" value="${m.rate||''}" onchange="S.msp[${i}].rate=+this.value">
+      <button class="rmbtn" onclick="rmM(${i})">×</button>`;
+    document.getElementById('mspR').appendChild(d);
+  });
+}
+function addMrow(){S.msp.push({name:'',hrs:0,rate:0});buildMsp();}
+function rmM(i){S.msp.splice(i,1);buildMsp();}
+
+function buildMoRows(){
+  document.getElementById('moR').innerHTML='';
+  MO.forEach((mo,i)=>{
+    const d=document.createElement('div');d.className='morow';const md=S.mo[i];
+    d.innerHTML=`<span style="font-size:12px;color:var(--mut);font-weight:500;padding-bottom:5px">${mo}</span>
+      <input type="number" placeholder="auto" value="${md.rev||''}" onchange="S.mo[${i}].rev=+this.value||null">
+      <input type="number" placeholder="auto" value="${md.sal||''}" onchange="S.mo[${i}].sal=+this.value||null">
+      <input type="number" placeholder="auto" value="${md.msp||''}" onchange="S.mo[${i}].msp=+this.value||null">
+      <input type="number" placeholder="auto" value="${md.sw||''}" onchange="S.mo[${i}].sw=+this.value||null">
+      <input type="number" placeholder="auto" value="${md.other||''}" onchange="S.mo[${i}].other=+this.value||null">`;
+    document.getElementById('moR').appendChild(d);
+  });
+}
+
+function stab(id,btn){
+  document.querySelectorAll('.tp').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tb').forEach(b=>b.classList.remove('on'));
+  document.getElementById('tp-'+id).classList.add('on');btn.classList.add('on');
+}
+
+function loadMan(){
+  S.name=document.getElementById('i-name').value||'My Institution';
+  S.fy=document.getElementById('i-fy').value||'FY2026';
+  S.revenue=+document.getElementById('i-rev').value||0;
+  S.opex=+document.getElementById('i-opex').value||0;
+  S.software=+document.getElementById('i-sw').value||0;
+  S.hosting=+document.getElementById('i-ho').value||0;
+  S.reseller=+document.getElementById('i-re').value||0;
+  S.subs=+document.getElementById('i-su').value||0;
+  S.travel=+document.getElementById('i-tr').value||0;
+  document.getElementById('manEnt').style.display='none';go();
+}
+
+// ── CORE CALCULATIONS ────────────────────────────────────────────
+const gSal=()=>S.staff.reduce((a,s)=>a+(s.total||0),0);
+const gCio=()=>{const c=S.staff.find(s=>s.isCio);return c?(c.total||0):0;};
+const gMsp=()=>S.msp.reduce((a,m)=>a+mspAnn(m),0);
+const gOth=()=>(S.software||0)+(S.hosting||0)+(S.reseller||0)+(S.subs||0)+(S.travel||0);
+const mspAnn=m=>m.annEst||(m.hrs*m.rate*12);
+const moVal=(field,ann)=>MO.map((_,i)=>{const v=S.mo[i][field];return(v&&v>0)?v:ann/12;});
+const adjExCost=()=>S.adj.filter(a=>a.type==='cost').reduce((s,a)=>s+(+a.amount||0),0);
+const adjExRev=()=>S.adj.filter(a=>a.type==='revenue').reduce((s,a)=>s+(+a.amount||0),0);
+
+function getAdjusted(){
+  const c1=+document.getElementById('s1').value/100;
+  const c2=+document.getElementById('s2').value/100;
+  const c3=+document.getElementById('s3').value/100;
+  const c5=+document.getElementById('s5').value/100;
+  const sal=gSal(),cio=gCio(),msp=gMsp(),oth=gOth();
+  const ec=adjExCost(),er=adjExRev();
+  const baseCogs=sal+msp+oth;
+  const baseGM=S.revenue-baseCogs,baseGMp=S.revenue?baseGM/S.revenue:0,baseNet=baseGM-S.opex;
+  // Apply edit overrides then sliders
+  const adjRevBase=editOverrides.revenue!==undefined?editOverrides.revenue:S.revenue*(1+c3)+er;
+  const adjCioSal=editOverrides.cio!==undefined?editOverrides.cio:(cio*(1-c1));
+  const adjSalBase=editOverrides.salaries!==undefined?editOverrides.salaries:((sal-cio)+adjCioSal);
+  const adjMspBase=editOverrides.msp!==undefined?editOverrides.msp:(msp*(1-c2));
+  const adjSwBase=editOverrides.software!==undefined?editOverrides.software:((S.software||0)*(1-c5));
+  const adjOth=adjSwBase+(S.hosting||0)+(S.reseller||0)+(S.subs||0)+(S.travel||0)+ec;
+  const adjCogs=adjSalBase+adjMspBase+adjOth;
+  const adjGM=adjRevBase-adjCogs,adjGMp=adjRevBase?adjGM/adjRevBase:0,adjNet=adjGM-S.opex;
+  return{sal,cio,msp,oth,baseCogs,baseGM,baseGMp,baseNet,ec,er,
+    adjRev:adjRevBase,adjSal:adjSalBase,adjCio:adjCioSal,adjMsp:adjMspBase,adjSw:adjSwBase,adjOth,adjCogs,adjGM,adjGMp,adjNet,
+    c1,c2,c3,c5};
+}
+
+// ── SCORE CALCULATION ────────────────────────────────────────────
+function calcScore(gmPct,netPct,mspPct,opexPct){
+  let pts=0;
+  if(gmPct>=0.35)pts+=30;else if(gmPct>=0.30)pts+=22;else if(gmPct>=0.25)pts+=14;else pts+=5;
+  if(netPct>=0.12)pts+=25;else if(netPct>=0.05)pts+=18;else if(netPct>=0)pts+=10;else pts+=0;
+  if(mspPct<=0.10)pts+=25;else if(mspPct<=0.15)pts+=17;else if(mspPct<=0.20)pts+=8;else pts+=2;
+  if(opexPct<=0.15)pts+=20;else if(opexPct<=0.20)pts+=13;else if(opexPct<=0.25)pts+=6;else pts+=1;
+  if(pts>=80)return{grade:'A',cls:'score-A',label:'Healthy — strong margins, well-controlled costs'};
+  if(pts>=60)return{grade:'B',cls:'score-B',label:'Good — solid foundations, one or two areas to tighten'};
+  if(pts>=40)return{grade:'C',cls:'score-C',label:'Needs attention — margin pressure, review COGS and OPEX'};
+  return{grade:'D',cls:'score-D',label:'At risk — significant margin issues requiring immediate action'};
+}
+
+// ── GO ───────────────────────────────────────────────────────────
+function go(){
+  if(S.staff.length===0&&S._salTotal>0)S.staff=[{name:'Staff (combined)',base:Math.round(S._salTotal*.85),total:Math.round(S._salTotal)}];
+  if(S.msp.length===0&&S._mspTotal>0)S.msp=[{name:'MSP (combined)',hrs:0,rate:0,annEst:Math.round(S._mspTotal)}];
+  document.getElementById('content').classList.add('on');
+  document.getElementById('onboard').style.display='none';
+  document.getElementById('manEnt').style.display='none';
+  ['btnScenario','btnPeriod','btnExportData','btnImportData','btnExport','btnReset'].forEach(id=>document.getElementById(id).style.display='block');
+  document.getElementById('dataBar').style.display='none';
+  document.getElementById('acctSec').textContent=`Snapshot — ${S.name}${S.fy?' · '+S.fy:''}`;
+  document.getElementById('periodNotes').value=S.notes||'';
+  buildMoChips();buildAdjRows();renderHistBar();renderPortfolio();updateAiSub();
+  ['s1','s2','s3','s5'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{editOverrides={};render();}));
+  document.getElementById('targetGM').addEventListener('input',calcReverse);
+  render();
+}
+
+// ── MAIN RENDER ──────────────────────────────────────────────────
+function render(){
+  const a=getAdjusted();
+  const{sal,cio,msp,baseCogs,baseGM,baseGMp,baseNet,adjRev,adjSal,adjMsp,adjSw,adjCogs,adjGM,adjGMp,adjNet,ec,er,c1,c2,c5}=a;
+
+  // Slider labels
+  document.getElementById('v1').textContent=Math.round(c1*100)+'%';
+  document.getElementById('v2').textContent=Math.round(c2*100)+'%';
+  document.getElementById('v3').textContent=Math.round(a.c3*100)+'%';
+  document.getElementById('v5').textContent=Math.round(c5*100)+'%';
+
+  // Score
+  const sc=calcScore(baseGMp,S.revenue?baseNet/S.revenue:0,S.revenue?msp/S.revenue:0,S.revenue?S.opex/S.revenue:0);
+  document.getElementById('scoreRing').innerHTML=`<div class="score-ring ${sc.cls}">${sc.grade}</div>`;
+  document.getElementById('scoreGrade').textContent=sc.label;
+
+  // Snapshot cards
+  document.getElementById('snap').innerHTML=`
+    <div class="mc ${baseGMp>=.32?'cg':baseGMp<.22?'cr':'cw'}">
+      <div class="ml">Gross margin</div>
+      <div class="mv ${baseGMp>=.32?'vg':baseGMp<.22?'vr':'va'}">${pc(baseGMp)}</div>
+      <div class="ms">${fmt(baseGM)}/yr</div></div>
+    <div class="mc ${baseNet>=0?'cg':'cr'}">
+      <div class="ml">Net margin</div>
+      <div class="mv ${baseNet>=0?'vg':'vr'}">${pc(S.revenue?baseNet/S.revenue:0)}</div>
+      <div class="ms">${baseNet<0?'-':''}${fmt(baseNet)}</div></div>
+    <div class="mc cb"><div class="ml">Revenue</div><div class="mv">${fmt(S.revenue)}</div><div class="ms">${fmt(S.revenue/12)}/mo</div></div>
+    <div class="mc cw"><div class="ml">Total COGS</div><div class="mv va">${fmt(baseCogs)}</div><div class="ms">${S.revenue?Math.round(baseCogs/S.revenue*100):0}% of rev</div></div>
+    <div class="mc ${adjGMp>baseGMp?'cg':''} cp">
+      <div class="ml">Adjusted GM</div>
+      <div class="mv vp">${pc(adjGMp)}</div>
+      <div class="ms">${adjGMp>=baseGMp?'+':''}${((adjGMp-baseGMp)*100).toFixed(1)}pp vs current</div></div>`;
+
+  // Benchmarks
+  const benches=[
+    {l:'Gross margin',val:baseGMp,target:.33,min:.22,max:.45,good:v=>v>=.30,fmt:v=>pc(v)},
+    {l:'MSP cost % of revenue',val:S.revenue?msp/S.revenue:0,target:.11,min:0,max:.30,good:v=>v<=.12,fmt:v=>pc(v),invert:true},
+    {l:'OPEX % of revenue',val:S.revenue?S.opex/S.revenue:0,target:.15,min:0,max:.35,good:v=>v<=.18,fmt:v=>pc(v),invert:true},
+    {l:'Net margin',val:S.revenue?baseNet/S.revenue:0,target:.10,min:-.1,max:.25,good:v=>v>=.05,fmt:v=>pc(v)},
+  ];
+  document.getElementById('benchmarks').innerHTML=benches.map(b=>{
+    const norm=(v,mn,mx)=>Math.max(0,Math.min(100,(v-mn)/(mx-mn)*100));
+    const fillW=norm(b.val,b.min,b.max);
+    const tgtW=norm(b.target,b.min,b.max);
+    const good=b.good(b.val);
+    const color=good?'var(--grn)':b.val>=(b.invert?b.target*1.5:b.target*.5)?'var(--amb)':'var(--red)';
+    return`<div style="margin-bottom:.9rem">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--mut)">${b.l}</span>
+        <span style="font-family:var(--mono);font-weight:500;color:${color}">${b.fmt(b.val)}</span>
+      </div>
+      <div class="bench-bar"><div class="bench-fill" style="width:${fillW}%;background:${color}"></div>
+        <div class="bench-target" style="left:${tgtW}%" title="Target: ${b.fmt(b.target)}"></div></div>
+      <div class="bench-label"><span>${b.fmt(b.min)}</span><span style="color:var(--acc)">Target: ${b.fmt(b.target)}</span><span>${b.fmt(b.max)}</span></div>
+    </div>`;
+  }).join('');
+
+  // Insights
+  const ins=[];
+  if(S.revenue>0){
+    if(cio>0&&cio/S.revenue>.18)ins.push(`CIO salary is ${Math.round(cio/S.revenue*100)}% of revenue. Reallocating 25–30% to other accounts could add 4–6 gross margin points.`);
+    if(msp>0&&msp/S.revenue>.15)ins.push(`MSP spend is ${Math.round(msp/S.revenue*100)}% of revenue — above the 10–12% benchmark. Your top contractors by cost are the primary lever.`);
+    if(S.opex>0&&S.opex/S.revenue>.20)ins.push(`OPEX is ${Math.round(S.opex/S.revenue*100)}% of revenue. Healthy higher-ed IT accounts run 12–18%. This needs a separate conversation from COGS.`);
+    if(baseGMp<.28&&baseGMp>0)ins.push(`Gross margin below 28% leaves minimal buffer. Target 32–38% for a sustainable higher-ed MSP account.`);
+    if(baseNet<0)ins.push(`Net loss of ${fmt(Math.abs(baseNet))}. COGS adjustments alone won't fix this — contract repricing or OPEX reduction is also required.`);
+  }
+  if(!ins.length)ins.push('Margins look solid. Use the scenario levers to stress-test what happens if MSP costs or OPEX increase.');
+  document.getElementById('ibox').innerHTML=`<div class="ititle">Analysis — ${S.name}</div><div class="ilist">${ins.map(t=>`<div class="iitem"><div class="idot"></div><span>${t}</span></div>`).join('')}</div>`;
+
+  // Scenario label
+  const sn=document.getElementById('scenName').value;
+  document.getElementById('scenLabel').textContent=sn?`Scenario: "${sn}" — click any adjusted value to edit directly`:'Drag levers or click adjusted values to edit directly.';
+
+  // P&L TABLE with editable adjusted column
+  let rows=[];
+  rows.push({l:'Revenue',b:S.revenue,a:adjRev,lib:false,ek:'revenue'});
+  rows.push({l:'Salaries & wages',b:sal,a:adjSal,lib:true});
+  S.staff.forEach(s=>{
+    const aa=s.isCio?(s.total||0)*(1-c1):(s.total||0);
+    rows.push({l:s.name||'—',b:s.total||0,a:aa,lib:true,sub:true,cio:s.isCio});
+  });
+  rows.push({l:'MSP cost',b:msp,a:adjMsp,lib:true,ek:'msp'});
+  S.msp.forEach(m=>{
+    const ann=mspAnn(m);
+    rows.push({l:m.name||'—',b:ann,a:ann*(1-c2),lib:true,sub:true,tag:ann/msp>.3?'top':null});
+  });
+  rows.push({l:'Software & tools',b:S.software||0,a:adjSw,lib:true,ek:'software'});
+  rows.push({l:'Hosting + other',b:(S.hosting||0)+(S.reseller||0)+(S.subs||0)+(S.travel||0),a:(S.hosting||0)+(S.reseller||0)+(S.subs||0)+(S.travel||0),lib:true});
+  S.adj.filter(x=>x.type==='cost'&&x.amount>0).forEach(x=>rows.push({l:x.label||'Additional cost',b:0,a:+x.amount,lib:true,sub:true,isNew:true}));
+  rows.push({l:'Total COGS',b:baseCogs,a:adjCogs,lib:true,tot:true});
+  rows.push({l:'Gross margin',b:baseGM,a:adjGM,lib:false,tot:true,pcts:[baseGMp,adjGMp]});
+  rows.push({l:'OPEX',b:S.opex,a:S.opex,lib:true});
+  S.adj.filter(x=>x.type==='revenue'&&x.amount>0).forEach(x=>rows.push({l:x.label||'Additional revenue',b:0,a:+x.amount,lib:false,sub:true,isNew:true}));
+  rows.push({l:'Net margin',b:baseNet,a:adjNet,lib:false,tot:true});
+
+  let t=`<thead><tr><th>Line item</th><th class="tr">Current</th><th class="tr">Adjusted <span style="font-weight:400;opacity:.7">(click to edit)</span></th><th class="tr">Change</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const delta=r.a-r.b,good=r.lib?delta<0:delta>0;
+    const dc=delta===0?'':(good?'vg':'vr');
+    const cls=r.tot?'ttot':r.sub?'tsub':'';
+    const isMargin=(r.l==='Gross margin'||r.l==='Net margin');
+    const bc=isMargin?(r.b<0?'vr':'vg'):'',ac=isMargin?(r.a<0?'vr':'vg'):'';
+    const pctStr=r.pcts?` <span style="font-size:10px;color:var(--sub)">(${pc(r.pcts[0])} → ${pc(r.pcts[1])})</span>`:'';
+    const tags=(r.cio?`<span class="tag tag-cio">CIO</span>`:'')+(r.tag==='top'?`<span class="tag tag-top">top</span>`:'')+(r.isNew?`<span class="tag tag-new">new</span>`:'');
+    const editBtn=r.ek?` data-ek="${r.ek}"`:'';
+    const adjCell=r.ek?`<td class="tr tm ${ac} editable"${editBtn} onclick="startEdit(this,'${r.ek}',${r.a})">${r.a<0?'-':''}${fmt(r.a)}</td>`:`<td class="tr tm ${ac}">${r.a<0?'-':''}${fmt(r.a)}</td>`;
+    t+=`<tr class="${cls}"><td class="tmu">${r.l}${pctStr}${tags}</td><td class="tr tm ${bc}">${r.b<0?'-':''}${fmt(r.b)}</td>${adjCell}<td class="tr tm ${dc}">${delta===0?'—':(delta>0?'+':'-')+fmt(Math.abs(delta))}</td></tr>`;
+  });
+  t+='</tbody>';
+  document.getElementById('plT').innerHTML=t;
+
+  // Salary detail
+  let st=`<thead><tr><th>Name</th><th class="tr">Base</th><th class="tr">Total comp</th><th class="tr">% COGS</th><th class="tr">Adjusted</th></tr></thead><tbody>`;
+  S.staff.forEach(s=>{
+    const aa=s.isCio?(s.total||0)*(1-c1):(s.total||0);
+    const p=baseCogs>0?Math.round((s.total||0)/baseCogs*100)+'%':'—';
+    const tag=s.isCio?`<span class="tag tag-cio">CIO</span>`:'';
+    st+=`<tr><td class="tmu">${esc(s.name)||'—'}${tag}</td><td class="tr tm">${fmt(s.base||0)}</td><td class="tr tm">${fmt(s.total||0)}</td><td class="tr tm">${p}</td><td class="tr tm ${aa<(s.total||0)?'vg':''}">${fmt(aa)}</td></tr>`;
+  });
+  st+=`<tr class="ttot"><td>Total</td><td></td><td class="tr tm">${fmt(sal)}</td><td></td><td class="tr tm ${adjSal<sal?'vg':''}">${fmt(adjSal)}</td></tr></tbody>`;
+  document.getElementById('salT').innerHTML=st;
+
+  // MSP detail
+  let mt=`<thead><tr><th>Resource</th><th class="tr">Hrs/mo</th><th class="tr">Rate</th><th class="tr">Annual est.</th><th class="tr">% MSP</th><th class="tr">Adjusted</th></tr></thead><tbody>`;
+  S.msp.forEach(m=>{
+    const ann=mspAnn(m),aa=ann*(1-c2),p=msp>0?Math.round(ann/msp*100)+'%':'—';
+    const tag=ann/msp>.3?`<span class="tag tag-top">top</span>`:'';
+    mt+=`<tr><td class="tmu">${esc(m.name)||'—'}${tag}</td><td class="tr tm">${m.hrs>0?m.hrs:'—'}</td><td class="tr tm">${m.rate>0?'$'+m.rate.toFixed(2):'—'}</td><td class="tr tm">${fmt(ann)}</td><td class="tr tm">${p}</td><td class="tr tm ${aa<ann?'vg':''}">${fmt(aa)}</td></tr>`;
+  });
+  mt+=`<tr class="ttot"><td>Total</td><td></td><td></td><td class="tr tm">${fmt(msp)}</td><td></td><td class="tr tm ${adjMsp<msp?'vg':''}">${fmt(adjMsp)}</td></tr></tbody>`;
+  document.getElementById('mspT').innerHTML=mt;
+
+  // Adj summary
+  const hasAdj=S.adj.some(x=>+x.amount>0);
+  document.getElementById('adjSummary').style.display=hasAdj?'block':'none';
+  if(hasAdj){
+    const ni=adjRev-adjCogs,nip=ni>=0;
+    document.getElementById('adjCards').innerHTML=`
+      <div class="mc ${ec>0?'cr':''}"><div class="ml">Additional costs</div><div class="mv ${ec>0?'vr':''}">${fmt(ec)}</div><div class="ms">${fmt(ec/12)}/mo</div></div>
+      <div class="mc ${er>0?'cg':''}"><div class="ml">Additional revenue</div><div class="mv ${er>0?'vg':''}">${fmt(er)}</div><div class="ms">${fmt(er/12)}/mo</div></div>
+      <div class="mc ${nip?'cg':'cr'}"><div class="ml">Net P&amp;L impact</div><div class="mv ${nip?'vg':'vr'}">${er-ec>=0?'+':''}${fmt(er-ec)}</div><div class="ms">per year</div></div>
+      <div class="mc ${adjGMp>=.32?'cg':adjGMp<.22?'cr':'cw'}"><div class="ml">Adjusted GM</div><div class="mv ${adjGMp>=.32?'vg':adjGMp<.22?'vr':'va'}">${pc(adjGMp)}</div><div class="ms">Net: ${adjNet>=0?'':'- '}${fmt(adjNet)}</div></div>`;
+  }
+
+  // Lever chart
+  const lgB=MO.map(()=>Math.round(baseGM/12)),lgA=MO.map(()=>Math.round(adjGM/12));
+  if(lChart)lChart.destroy();
+  lChart=new Chart(document.getElementById('lChart'),{
+    type:'bar',data:{labels:MO,datasets:[
+      {label:'GM before',data:lgB,backgroundColor:'#d8d3cc',borderRadius:3,borderSkipped:false},
+      {label:'GM after',data:lgA,backgroundColor:adjGMp>baseGMp?'#3a7a5c':'#9e2b2b',borderRadius:3,borderSkipped:false},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': $'+c.parsed.y.toLocaleString()}}},
+      scales:{x:{ticks:{color:'#8f8b87',font:{size:9}},grid:{display:false}},y:{ticks:{color:'#8f8b87',font:{size:9},callback:v=>'$'+Math.round(v/1000)+'k'},grid:{color:'#ede9e3'}}}}
+  });
+  calcReverse();
+  renderMoChart();
+}
+
+// ── EDITABLE CELLS ───────────────────────────────────────────────
+function startEdit(cell,key,currentVal){
+  if(cell.querySelector('input'))return;
+  const orig=cell.innerHTML;
+  cell.innerHTML='';
+  const inp=document.createElement('input');
+  inp.type='number';inp.className='edit-input';inp.value=Math.round(currentVal);
+  cell.appendChild(inp);inp.focus();inp.select();
+  const commit=()=>{
+    const v=parseFloat(inp.value);
+    if(!isNaN(v)&&v>=0){editOverrides[key]=v;render();}
+    else{cell.innerHTML=orig;}
+  };
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')commit();if(e.key==='Escape'){delete editOverrides[key];cell.innerHTML=orig;render();}});
+}
+
+// ── REVERSE CALCULATOR ────────────────────────────────────────────
+function calcReverse(){
+  const tgt=parseFloat(document.getElementById('targetGM').value)/100;
+  const lever=document.getElementById('revLever').value;
+  const sal=gSal(),msp=gMsp(),oth=gOth(),cogs=sal+msp+oth;
+  if(!S.revenue||!tgt){document.getElementById('revResult').textContent='—';return;}
+  let result='',sub='';
+  if(lever==='revenue'){
+    const needed=cogs/(1-tgt);
+    const delta=needed-S.revenue;
+    result=delta>0?`+${fmt(delta)}`:`-${fmt(Math.abs(delta))}`;
+    sub=`Contract needs to be ${fmt(needed)}/yr (currently ${fmt(S.revenue)})`;
+  }else if(lever==='msp'){
+    const maxCogs=S.revenue*(1-tgt);
+    const mspNeeded=maxCogs-sal-oth;
+    if(mspNeeded<0){result='Not achievable';sub='Even $0 MSP cost would not reach this target with current salaries';}
+    else{const delta=msp-mspNeeded;result=`-${fmt(delta)} reduction`;sub=`MSP needs to drop to ${fmt(mspNeeded)}/yr (currently ${fmt(msp)})`;}
+  }else if(lever==='cio'){
+    const cio=gCio();
+    const maxCogs=S.revenue*(1-tgt);
+    const salNeeded=maxCogs-msp-oth;
+    const cioNeeded=salNeeded-(sal-cio);
+    const reallocPct=cio>0?Math.max(0,Math.min(100,Math.round((1-cioNeeded/cio)*100))):0;
+    if(cioNeeded<0){result='Not achievable via CIO reallocation alone';sub='Salary base is still too high even at 100% reallocation';}
+    else{result=`${reallocPct}% reallocation needed`;sub=`CIO cost on this account needs to drop to ${fmt(cioNeeded)}/yr (currently ${fmt(cio)})`;}
+  }
+  document.getElementById('revResult').textContent=result;
+  document.getElementById('revSub').textContent=sub;
+}
+
+// ── MONTH CHIPS ───────────────────────────────────────────────────
+const metDefs=[
+  {key:'revenue',label:'Revenue',color:'#1a3a70'},
+  {key:'cogs',label:'Total COGS',color:'#9e2b2b'},
+  {key:'salaries',label:'Salaries',color:'#7a4f00'},
+  {key:'msp',label:'MSP',color:'#5a2e8a'},
+  {key:'software',label:'Software',color:'#5c5954'},
+  {key:'grossMargin',label:'Gross Margin',color:'#1a5e38'},
+  {key:'netMargin',label:'Net Margin',color:'#2a5c45'},
+];
+function buildMoChips(){
+  const ctrl=document.getElementById('mctrl');
+  ctrl.innerHTML='<span style="font-size:12px;color:var(--mut);font-weight:500;margin-right:2px">Show:</span>';
+  metDefs.forEach(m=>{
+    const c=document.createElement('span');c.className='chip'+(activeMo.includes(m.key)?' on':'');
+    c.textContent=m.label;if(activeMo.includes(m.key))c.style.background=m.color;
+    c.addEventListener('click',()=>{
+      const idx=activeMo.indexOf(m.key);
+      if(idx>=0){activeMo.splice(idx,1);c.classList.remove('on');c.style.background='';}
+      else{activeMo.push(m.key);c.classList.add('on');c.style.background=m.color;}
+      renderMoChart();
+    });
+    ctrl.appendChild(c);
+  });
+}
+
+function renderMoChart(){
+  const a=getAdjusted();
+  const{adjRev:ar,adjSal:as_,adjMsp:am,adjSw:asw}=a;
+  const mRev=moVal('rev',ar),mSal=moVal('sal',as_),mMsp=moVal('msp',am),mSw=moVal('sw',asw);
+  const mOth=MO.map((_,i)=>{const v=S.mo[i].other;return(v&&v>0)?v:((S.hosting||0)+(S.reseller||0)+(S.subs||0)+(S.travel||0)+adjExCost())/12;});
+  const mCogs=MO.map((_,i)=>mSal[i]+mMsp[i]+mSw[i]+mOth[i]);
+  const mGM=MO.map((_,i)=>mRev[i]-mCogs[i]),mNet=MO.map((_,i)=>mGM[i]-S.opex/12);
+  const dm={revenue:mRev,cogs:mCogs,salaries:mSal,msp:mMsp,software:mSw,grossMargin:mGM,netMargin:mNet};
+  const ds=metDefs.filter(m=>activeMo.includes(m.key)).map(m=>({label:m.label,data:dm[m.key].map(v=>Math.round(v)),borderColor:m.color,backgroundColor:m.color+'18',tension:.3,fill:false,pointRadius:3,pointHoverRadius:5,borderWidth:2}));
+  if(moChart)moChart.destroy();
+  moChart=new Chart(document.getElementById('moChart'),{type:'line',data:{labels:MO,datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': $'+c.parsed.y.toLocaleString()}}},
+      scales:{x:{ticks:{color:'#8f8b87',font:{size:11}},grid:{color:'#ede9e3'}},y:{ticks:{color:'#8f8b87',font:{size:11},callback:v=>'$'+Math.round(v/1000)+'k'},grid:{color:'#ede9e3'}}}}});
+  const act=metDefs.filter(m=>activeMo.includes(m.key));
+  let tbl=`<thead><tr><th>Month</th>${act.map(m=>`<th class="tr" style="color:${m.color}">${m.label}</th>`).join('')}</tr></thead><tbody>`;
+  MO.forEach((mo,i)=>{
+    tbl+=`<tr><td class="tmu" style="font-weight:500">${mo}</td>`;
+    act.forEach(m=>{const v=Math.round(dm[m.key][i]);const isM=(m.key==='grossMargin'||m.key==='netMargin');tbl+=`<td class="tr tm ${isM?(v<0?'vr':'vg'):''}">${v<0?'-':''}$${Math.abs(v).toLocaleString()}</td>`;});
+    tbl+='</tr>';
+  });
+  document.getElementById('moT').innerHTML=tbl+'</tbody>';
+}
+
+// ── ADJ ROWS ──────────────────────────────────────────────────────
+function buildAdjRows(){document.getElementById('adjRows').innerHTML='';S.adj.forEach((a,i)=>renderAdjRow(a,i));}
+function renderAdjRow(a,i){
+  const d=document.createElement('div');d.className='adjrow';
+  d.innerHTML=`<input type="text" placeholder="e.g. New security tool, FreshService, CrowdStrike licenses..." value="${esc(a.label||'')}" onchange="S.adj[${i}].label=this.value;render()">
+    <input type="number" placeholder="0" value="${a.amount||''}" onchange="S.adj[${i}].amount=+this.value;render()">
+    <select onchange="S.adj[${i}].type=this.value;render()"><option value="cost" ${a.type==='cost'?'selected':''}>Additional cost</option><option value="revenue" ${a.type==='revenue'?'selected':''}>Additional revenue</option></select>
+    <button class="rmbtn" onclick="rmAdj(${i})">×</button>`;
+  document.getElementById('adjRows').appendChild(d);
+}
+function addAdj(){S.adj.push({label:'',amount:0,type:'cost'});renderAdjRow(S.adj[S.adj.length-1],S.adj.length-1);render();}
+function rmAdj(i){S.adj.splice(i,1);buildAdjRows();render();}
+
+// ── PERIOD HISTORY ────────────────────────────────────────────────
+const HKEY='ciovault_history_v2';
+function loadHist(){try{return JSON.parse(localStorage.getItem(HKEY)||'[]');}catch{return[];}}
+function saveHist(h){try{localStorage.setItem(HKEY,JSON.stringify(h));}catch{}}
+
+function buildSnap(){
+  const sal=gSal(),msp=gMsp(),oth=gOth(),cogs=sal+msp+oth,gm=S.revenue-cogs;
+  return{name:S.name,fy:S.fy,revenue:S.revenue,opex:S.opex,salaries:sal,msp,software:S.software||0,
+    hosting:S.hosting||0,reseller:S.reseller||0,subs:S.subs||0,totalCogs:cogs,
+    grossMargin:gm,grossMarginPct:S.revenue?gm/S.revenue:0,netMargin:gm-S.opex,
+    staff:S.staff.map(s=>({...s})),mspList:S.msp.map(m=>({...m})),notes:S.notes||''};
+}
+
+function savePeriod(){
+  const label=prompt('Name this period:',`${S.name} — ${new Date().toLocaleDateString('en-US',{month:'short',year:'numeric'})}`);
+  if(!label)return;
+  const snap=buildSnap();const h=loadHist();
+  h.unshift({id:Date.now(),label,snap});
+  if(h.length>20)h.pop();
+  saveHist(h);renderHistBar();renderPortfolio();
+}
+
+function saveScenario(){
+  const sn=document.getElementById('scenName').value||'Unnamed scenario';
+  const snap=buildSnap();const a=getAdjusted();
+  snap.scenario={name:sn,adjRev:a.adjRev,adjGM:a.adjGM,adjGMp:a.adjGMp,adjNet:a.adjNet,adjCogs:a.adjCogs};
+  const h=loadHist();h.unshift({id:Date.now(),label:`[Scenario] ${sn} — ${S.name}`,snap,isScenario:true});
+  if(h.length>20)h.pop();saveHist(h);renderHistBar();renderPortfolio();
+  alert(`Scenario "${sn}" saved.`);
+}
+
+function renderHistBar(){
+  const h=loadHist();const chips=document.getElementById('histChips');
+  if(!h.length){chips.innerHTML='<span class="hist-none">No saved periods yet — use "Save period" to compare over time</span>';return;}
+  chips.innerHTML=h.map(p=>`<span class="hchip ${activePeriod===p.id?'active':''}" onclick="selectPeriod(${p.id})">${p.isScenario?'📋 ':''}${p.label}<span class="hdel" onclick="delPeriod(event,${p.id})">×</span></span>`).join('');
+}
+
+function selectPeriod(id){
+  if(activePeriod===id){activePeriod=null;document.getElementById('cmpSection').style.display='none';renderHistBar();updateAiSub();return;}
+  activePeriod=id;renderHistBar();renderCompare();updateAiSub();
+}
+function delPeriod(e,id){
+  e.stopPropagation();const h=loadHist().filter(p=>p.id!==id);saveHist(h);
+  if(activePeriod===id){activePeriod=null;document.getElementById('cmpSection').style.display='none';}
+  renderHistBar();renderPortfolio();
+}
+
+function renderCompare(){
+  const h=loadHist();const prev=h.find(p=>p.id===activePeriod);if(!prev)return;
+  const curr=buildSnap();
+  document.getElementById('cmpSection').style.display='block';
+  document.getElementById('cmpLabel').textContent=`Current "${curr.name}" vs saved "${prev.label}"`;
+  const fields=[{l:'Revenue',k:'revenue'},{l:'Salaries',k:'salaries'},{l:'MSP cost',k:'msp'},{l:'Total COGS',k:'totalCogs'},{l:'Gross margin $',k:'grossMargin'},{l:'Gross margin %',k:'grossMarginPct',pct:true},{l:'Net margin',k:'netMargin'},{l:'OPEX',k:'opex'}];
+  document.getElementById('cmpGrid').innerHTML=`
+    <div class="cmp-panel"><div class="cmp-head"><span class="cmp-title">${prev.label}</span><span class="cmp-badge cmp-prev">Prior</span></div>${fields.map(f=>`<div class="delta-row"><span class="delta-lbl">${f.l}</span><span class="delta-val">${f.pct?pc(prev.snap[f.k]||0):fmt(prev.snap[f.k]||0)}</span></div>`).join('')}</div>
+    <div class="cmp-panel"><div class="cmp-head"><span class="cmp-title">${curr.name} (current)</span><span class="cmp-badge cmp-curr">Current</span></div>${fields.map(f=>`<div class="delta-row"><span class="delta-lbl">${f.l}</span><span class="delta-val">${f.pct?pc(curr[f.k]||0):fmt(curr[f.k]||0)}</span></div>`).join('')}</div>`;
+  let dt=`<thead><tr><th>Metric</th><th class="tr">Prior</th><th class="tr">Current</th><th class="tr">Change</th><th class="tr">▲▼</th></tr></thead><tbody>`;
+  fields.forEach(f=>{
+    const pv=prev.snap[f.k]||0,cv=curr[f.k]||0,delta=cv-pv;
+    const isGoodUp=!['totalCogs','salaries','msp','opex'].includes(f.k);
+    const good=isGoodUp?delta>0:delta<0;
+    const cls=delta===0?'delta-neu':good?'delta-pos':'delta-neg';
+    dt+=`<tr><td class="tmu">${f.l}</td><td class="tr tm">${f.pct?pc(pv):fmt(pv)}</td><td class="tr tm">${f.pct?pc(cv):fmt(cv)}</td><td class="tr tm ${cls}">${delta===0?'—':(delta>0?'+':'-')+(f.pct?((Math.abs(delta)*100).toFixed(1)+'pp'):fmt(Math.abs(delta)))}</td><td class="tr ${cls}" style="font-size:14px">${delta===0?'—':delta>0?'▲':'▼'}</td></tr>`;
+  });
+  if(prev.snap.notes||curr.notes){
+    dt+=`<tr class="ttot"><td colspan="5" style="font-size:12px;color:var(--mut);font-weight:400;padding-top:.75rem">
+      ${prev.snap.notes?`<strong>Prior notes:</strong> ${esc(prev.snap.notes)}<br>`:''}
+      ${curr.notes?`<strong>Current notes:</strong> ${esc(curr.notes)}`:''}
+    </td></tr>`;
+  }
+  document.getElementById('cmpTable').innerHTML=dt+'</tbody>';
+}
+
+// ── PORTFOLIO ─────────────────────────────────────────────────────
+function renderPortfolio(){
+  const h=loadHist();
+  const sec=document.getElementById('portfolioSection');
+  if(h.length<2){sec.style.display='none';return;}
+  sec.style.display='block';
+  const sc=s=>{const g=s.grossMarginPct,n=s.revenue?s.netMargin/s.revenue:0,m=s.revenue?s.msp/s.revenue:0,o=s.revenue?s.opex/s.revenue:0;return calcScore(g,n,m,o).grade;};
+  let grid=`<div class="port-row"><span class="port-hdr">Period</span><span class="port-hdr" style="text-align:right">Revenue</span><span class="port-hdr" style="text-align:right">Gross margin</span><span class="port-hdr" style="text-align:right">Net margin</span><span class="port-hdr" style="text-align:right">MSP %</span><span class="port-hdr" style="text-align:center">Score</span></div>`;
+  h.forEach(p=>{
+    const s=p.snap,g=s.grossMarginPct||0,n=s.revenue?s.netMargin/s.revenue:0,m=s.revenue?s.msp/s.revenue:0;
+    const grade=sc(s);const cls=grade==='A'?'vg':grade==='B'?'vacc':grade==='C'?'va':'vr';
+    grid+=`<div class="port-row"><span class="tmu" style="font-size:12px">${p.label}</span><span class="tm tr">${fmt(s.revenue)}</span><span class="tm tr ${g>=.30?'vg':g<.22?'vr':'va'}">${pc(g)}</span><span class="tm tr ${n>=0?'vg':'vr'}">${pc(n)}</span><span class="tm tr ${m<=.12?'vg':m<=.20?'va':'vr'}">${pc(m)}</span><span class="tm" style="text-align:center;font-weight:500" class="${cls}">${grade}</span></div>`;
+  });
+  document.getElementById('portfolioGrid').innerHTML=grid;
+}
+
+// ── AI ANALYSIS ───────────────────────────────────────────────────
+function updateAiSub(){
+  document.getElementById('aiSubLabel').textContent=activePeriod?'AI will analyze your current P&L AND compare to the selected prior period':'Plain-language analysis with prioritized action items';
+}
+
+async function runAI(){
+  const btn=document.getElementById('aiBtn'),loading=document.getElementById('aiLoading'),out=document.getElementById('aiOut');
+  btn.disabled=true;loading.classList.add('show');out.classList.remove('show');out.innerHTML='';
+  const curr=buildSnap();const h=loadHist();const prev=activePeriod?h.find(p=>p.id===activePeriod):null;
+  const prompt=buildPrompt(curr,prev);
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
+        system:'You are a senior financial advisor for higher education IT managed services. Give direct, actionable advice. Use **bold** for key points. Use bullet lists (- item) only for 3+ items. No headers.',
+        messages:[{role:'user',content:prompt}]})});
+    if(!res.ok)throw new Error('API '+res.status);
+    const data=await res.json();renderAIText(data.content?.[0]?.text||'No response.',out);
+  }catch{renderAIText(buildFallback(curr,prev),out);}
+  loading.classList.remove('show');out.classList.add('show');btn.disabled=false;
+}
+
+function renderAIText(text,el){
+  el.innerHTML=text.split('\n\n').map(para=>{
+    if(para.trim().startsWith('- ')||para.includes('\n- '))
+      return'<ul>'+para.split('\n').filter(l=>l.trim()).map(l=>`<li>${l.replace(/^-\s*/,'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')}</li>`).join('')+'</ul>';
+    return'<p>'+para.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')+'</p>';
+  }).join('');
+}
+
+function buildPrompt(curr,prev){
+  const gp=(curr.grossMarginPct*100).toFixed(1),np=curr.revenue?((curr.netMargin/curr.revenue)*100).toFixed(1):'0';
+  const mp=curr.revenue?((curr.msp/curr.revenue)*100).toFixed(1):'0',sp=curr.revenue?((curr.salaries/curr.revenue)*100).toFixed(1):'0',op=curr.revenue?((curr.opex/curr.revenue)*100).toFixed(1):'0';
+  let p=`Analyze this IT outsourcing P&L for "${curr.name}" (${curr.fy||'current year'}).\n\nCURRENT P&L:\n- Revenue: $${Math.round(curr.revenue).toLocaleString()}\n- Salaries: $${Math.round(curr.salaries).toLocaleString()} (${sp}% of revenue)\n- MSP: $${Math.round(curr.msp).toLocaleString()} (${mp}% of revenue)\n- Software: $${Math.round(curr.software).toLocaleString()}\n- Total COGS: $${Math.round(curr.totalCogs).toLocaleString()}\n- Gross margin: $${Math.round(curr.grossMargin).toLocaleString()} (${gp}%)\n- OPEX: $${Math.round(curr.opex).toLocaleString()} (${op}% of revenue)\n- Net margin: $${Math.round(curr.netMargin).toLocaleString()} (${np}%)`;
+  if(curr.staff?.length)p+=`\n\nSTAFF:\n${curr.staff.map(s=>`- ${s.name}: $${Math.round(s.total||0).toLocaleString()}${s.isCio?' (CIO)':''}`).join('\n')}`;
+  if(curr.mspList?.length)p+=`\n\nTOP MSP RESOURCES:\n${curr.mspList.slice(0,5).map(m=>`- ${m.name}: ~$${Math.round(m.annEst||m.hrs*m.rate*12||0).toLocaleString()}/yr`).join('\n')}`;
+  if(curr.notes)p+=`\n\nCIO NOTES: ${curr.notes}`;
+  if(prev){
+    const pg=(prev.snap.grossMarginPct*100).toFixed(1),pn=prev.snap.revenue?((prev.snap.netMargin/prev.snap.revenue)*100).toFixed(1):'0';
+    const rd=curr.revenue-prev.snap.revenue,gd=curr.grossMarginPct-prev.snap.grossMarginPct;
+    p+=`\n\nCOMPARISON TO "${prev.label}":\n- Revenue: ${rd>=0?'+':''}$${Math.round(Math.abs(rd)).toLocaleString()}\n- Gross margin: ${gd>=0?'+':''}${(gd*100).toFixed(1)}pp (was ${pg}%)\n- Net margin: was ${pn}%\n- MSP: ${curr.msp>=prev.snap.msp?'+':''}$${Math.round(Math.abs(curr.msp-prev.snap.msp)).toLocaleString()}\n- Salaries: ${curr.salaries>=prev.snap.salaries?'+':''}$${Math.round(Math.abs(curr.salaries-prev.snap.salaries)).toLocaleString()}`;
+    p+=`\n\nAnalyze: (1) current health, (2) what drove period changes, (3) 2-3 specific prioritized actions.`;
+  }else{p+=`\n\nAnalyze: (1) overall health, (2) top 2-3 risks, (3) specific prioritized actions. Benchmarks: GM 30-38%, MSP under 12% of revenue, OPEX under 18%.`;}
+  return p;
+}
+
+function buildFallback(curr,prev){
+  const gp=(curr.grossMarginPct*100).toFixed(1),np=curr.revenue?((curr.netMargin/curr.revenue)*100).toFixed(1):'0';
+  const mp=curr.revenue?Math.round(curr.msp/curr.revenue*100):0,op=curr.revenue?Math.round(curr.opex/curr.revenue*100):0;
+  let a=`**P&L health — ${curr.name}**\n\n`;
+  if(curr.grossMarginPct>=.30&&curr.netMargin>=0)a+=`Gross margin at ${gp}% is within the healthy 30–38% range for higher-ed MSP accounts. Net margin is ${np}%. The fundamentals are solid.`;
+  else a+=`Gross margin at ${gp}%${curr.grossMarginPct<.28?' is below the 28% floor where risk starts building':' is approaching the lower bound of healthy range'}. Net margin is ${np}%${curr.netMargin<0?' — this account is running at a loss':''}.`;
+  const risks=[];
+  if(mp>15)risks.push(`- **MSP at ${mp}% of revenue** — benchmark is under 12%. Audit your top 1–2 contractors for scope reduction.`);
+  if(op>20)risks.push(`- **OPEX at ${op}% of revenue** — healthy accounts run 12–18%. This is a contract pricing issue, not a spending one.`);
+  if(curr.netMargin<0)risks.push(`- **Net loss of $${Math.round(Math.abs(curr.netMargin)).toLocaleString()}** — gross margin fixes alone won't close this. Repricing is required.`);
+  if(curr.grossMarginPct<.28)risks.push(`- **Gross margin below 28%** — no buffer for scope creep or unplanned costs.`);
+  if(!risks.length)risks.push(`- Margins are healthy. Watch for MSP hour creep and software renewal stacking at contract renewal.`);
+  a+=`\n\n**Key risks:**\n\n${risks.join('\n')}`;
+  const actions=[];
+  if(mp>15)actions.push(`- **Audit top MSP resources this quarter.** They likely represent 70%+ of your MSP spend. Get a deliverable breakdown.`);
+  if(curr.grossMarginPct<.30)actions.push(`- **Reprice at next renewal.** A 5–8% revenue increase adds ${Math.round(curr.revenue*.065/1000)}K and moves gross margin ~${((curr.revenue*.065/curr.revenue)*100).toFixed(1)}pp.`);
+  if(op>20)actions.push(`- **Separate the OPEX conversation.** OPEX above 20% is structural — address at the OculusIT level, not account by account.`);
+  actions.push(`- **Build a 90-day cost baseline.** Track MSP hours monthly against deliverables to catch scope creep early.`);
+  a+=`\n\n**Top priorities:**\n\n${actions.slice(0,3).join('\n')}`;
+  if(prev){
+    const gd=curr.grossMarginPct-prev.snap.grossMarginPct,rd=curr.revenue-prev.snap.revenue;
+    a+=`\n\n**Compared to ${prev.label}:** Revenue ${rd>=0?'grew':'declined'} $${Math.round(Math.abs(rd)).toLocaleString()}. Gross margin ${gd>=0?'improved':'declined'} ${(Math.abs(gd)*100).toFixed(1)}pp. ${gd<0?'Cost growth outpaced revenue — review what changed in MSP or salary between periods.':'Positive trend — protect it at next contract renewal.'}`;
+  }
+  return a;
+}
+
+// ── SCENARIO SAVE ─────────────────────────────────────────────────
+// (already defined above in go() section)
+
+// ── RESET ─────────────────────────────────────────────────────────
+function resetApp(){
+  S={name:'My Institution',fy:'FY2026',revenue:0,opex:0,software:0,hosting:0,reseller:0,subs:0,travel:0,staff:[],msp:[],adj:[],notes:'',mo:Array(12).fill(null).map(()=>({rev:null,sal:null,msp:null,sw:null,other:null}))};
+  editOverrides={};activePeriod=null;
+  document.getElementById('content').classList.remove('on');
+  document.getElementById('manEnt').style.display='none';
+  document.getElementById('onboard').style.display='block';
+  document.getElementById('parseStatus').style.display='none';
+  document.getElementById('cmpSection').style.display='none';
+  document.getElementById('aiOut').classList.remove('show');document.getElementById('aiOut').innerHTML='';
+  document.getElementById('aiLoading').classList.remove('show');document.getElementById('aiBtn').disabled=false;
+  ['btnScenario','btnPeriod','btnExportData','btnImportData','btnExport','btnReset'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('fi').value='';
+  ['s1','s2','s3','s5'].forEach(id=>document.getElementById(id).value=0);
+  document.getElementById('scenName').value='';
+  buildStaff();buildMsp();buildMoRows();buildAdjRows();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ── EXPORT PDF ────────────────────────────────────────────────────
+function exportPDF(){
+  const sn=document.getElementById('scenName').value;
+  document.getElementById('printMeta').innerHTML=`${S.name} · ${S.fy}<br>${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}${sn?'<br>Scenario: '+sn:''}`;
+  document.getElementById('printHeader').style.display='block';
+  window.print();
+  setTimeout(()=>document.getElementById('printHeader').style.display='none',500);
+}
+
+
+// ── EXPORT / IMPORT DATA ──────────────────────────────────────────
+function exportData(){
+  const h=loadHist();
+  if(!h.length){showToast('Nothing saved yet — save a period or scenario first');return;}
+  const payload={version:2,exported:new Date().toISOString(),periods:h};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`CIOVault_${(S.name||'data').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();URL.revokeObjectURL(url);
+  showToast(`Exported ${h.length} period${h.length!==1?'s':''} successfully`);
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('importFi').addEventListener('change',e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        // Accept v2 format {version, periods:[]} or legacy array
+        const incoming=Array.isArray(data)?data:(data.periods||[]);
+        if(!incoming.length){showToast('No periods found in this file');return;}
+        const existing=loadHist();
+        // Merge: add incoming periods that don't already exist (by id)
+        const existingIds=new Set(existing.map(p=>p.id));
+        const newOnes=incoming.filter(p=>!existingIds.has(p.id));
+        const merged=[...newOnes,...existing].slice(0,20);
+        saveHist(merged);
+        renderHistBar();renderPortfolio();
+        showToast(`Loaded ${newOnes.length} new period${newOnes.length!==1?'s':''} (${merged.length} total)`);
+      }catch(err){showToast('Could not read file — make sure it is a CIO Vault export');console.error(err);}
+      e.target.value='';
+    };
+    reader.readAsText(file);
+  });
+});
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3500);
+}
+
+
+// ── DEMO DATA ─────────────────────────────────────────────────────
+function loadDemo(){
+  // Realistic sample P&L for a mid-size higher-ed institution
+  S = {
+    name: 'Lakewood University (Sample)',
+    fy: 'FY2026',
+    revenue: 524000,
+    opex: 88000,
+    software: 14200,
+    hosting: 3800,
+    reseller: 12000,
+    subs: 2000,
+    travel: 0,
+    notes: 'Sample data — replace with your actual P&L. MSP costs elevated in Q1 due to ERP migration support. Expecting normalization by Q2.',
+    staff: [
+      { name: 'Marcus Webb', base: 68000, total: 82280, isCio: false },
+      { name: 'Priya Nair', base: 52000, total: 61360, isCio: false },
+      { name: 'Tyler Brooks', base: 44000, total: 51920, isCio: false },
+      { name: 'CIO (shared resource)', base: 115000, total: 138600, isCio: true },
+    ],
+    msp: [
+      { name: 'SyncTech Solutions', hrs: 92, rate: 65.00, annEst: 71760 },
+      { name: 'CloudBridge Partners', hrs: 74, rate: 51.20, annEst: 45466 },
+      { name: 'NetOps LLC', hrs: 38, rate: 21.80, annEst: 9940 },
+      { name: 'SecureEdge Inc', hrs: 14, rate: 60.10, annEst: 10097 },
+      { name: 'DataPath Services', hrs: 8,  rate: 18.80, annEst: 1805 },
+    ],
+    adj: [],
+    mo: [
+      {rev:43210,sal:24600,msp:14800,sw:1183,other:null},
+      {rev:39050,sal:24600,msp:13200,sw:1183,other:null},
+      {rev:43210,sal:24600,msp:14800,sw:1183,other:null},
+      {rev:41800,sal:24600,msp:13800,sw:1183,other:null},
+      {rev:43210,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:41800,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:43210,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:43210,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:41800,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:43210,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:41800,sal:24600,msp:11200,sw:1183,other:null},
+      {rev:43210,sal:24600,msp:11200,sw:1183,other:null},
+    ]
+  };
+  document.getElementById('onboard').style.display='none';
+  showStatus([
+    {t:'ok', m:'Sample data loaded — Lakewood University (FY2026)'},
+    {t:'ok', m:'Staff: 3 staff + 1 CIO (shared resource)'},
+    {t:'ok', m:'MSP: 5 contractors. Top spender: SyncTech Solutions (~$71,760/yr)'},
+    {t:'warn', m:'This is sample data. Upload your real P&L to analyze your actual account.'},
+  ]);
+  go();
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────
+const fmt=n=>'$'+Math.round(Math.abs(n)).toLocaleString();
+const pc=n=>(n*100).toFixed(1)+'%';
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+</script>
+</body>
+</html>
